@@ -3,6 +3,9 @@ import {
   Component,
   FilterCriteria,
   Location,
+  NODE_TYPE_ASSET,
+  NODE_TYPE_COMPONENT,
+  NODE_TYPE_LOCATION,
   TreeNode,
   createTreeNode,
   NODE_TYPE_ROOT,
@@ -52,7 +55,146 @@ export class AssetTree {
    * Returns the root node.
    */
   buildTree(): TreeNode {
-    // TODO: implement
+    const treeNodes = new Map<string, TreeNode>();
+    const visiting = new Set<string>();
+    const built = new Set<string>();
+
+    for (const location of this.locations) {
+      treeNodes.set(location.id, createTreeNode({
+        id: location.id,
+        name: location.name,
+        type: NODE_TYPE_LOCATION,
+        children: [],
+        parentId: location.parentId,
+      }));
+    }
+
+    for (const asset of this.assets) {
+      treeNodes.set(asset.id, createTreeNode({
+        id: asset.id,
+        name: asset.name,
+        type: NODE_TYPE_ASSET,
+        children: [],
+        locationId: asset.locationId,
+        parentId: asset.parentId,
+      }));
+    }
+
+    for (const component of this.components) {
+      treeNodes.set(component.id, createTreeNode({
+        id: component.id,
+        name: component.name,
+        type: NODE_TYPE_COMPONENT,
+        children: [],
+        sensorType: component.sensorType,
+        status: component.status,
+        parentId: component.parentId,
+      }));
+    }
+
+    const attachToParent = (node: TreeNode, parent: TreeNode) => {
+      if (!parent.children.some(child => child.id === node.id)) {
+        parent.children.push(node);
+      }
+    };
+
+    const resolveLocationParentId = (location: Location): string => {
+      if (!location.parentId) {
+        return this.root.id;
+      }
+
+      const parent = treeNodes.get(location.parentId);
+      return parent?.type === NODE_TYPE_LOCATION ? parent.id : this.root.id;
+    };
+
+    const resolveAssetParentId = (asset: Asset): string => {
+      if (asset.parentId) {
+        const assetParent = treeNodes.get(asset.parentId);
+        if (assetParent?.type === NODE_TYPE_ASSET) {
+          return assetParent.id;
+        }
+      }
+
+      if (asset.locationId) {
+        const locationParent = treeNodes.get(asset.locationId);
+        if (locationParent?.type === NODE_TYPE_LOCATION) {
+          return locationParent.id;
+        }
+      }
+
+      return this.root.id;
+    };
+
+    const resolveComponentParentId = (component: Component): string => {
+      if (!component.parentId) {
+        return this.root.id;
+      }
+
+      const parent = treeNodes.get(component.parentId);
+      if (parent?.type === NODE_TYPE_ASSET || parent?.type === NODE_TYPE_LOCATION) {
+        return parent.id;
+      }
+
+      return this.root.id;
+    };
+
+    const resolveParentId = (nodeId: string): string => {
+      const location = this.locations.find(item => item.id === nodeId);
+      if (location) {
+        return resolveLocationParentId(location);
+      }
+
+      const asset = this.assets.find(item => item.id === nodeId);
+      if (asset) {
+        return resolveAssetParentId(asset);
+      }
+
+      const component = this.components.find(item => item.id === nodeId);
+      if (component) {
+        return resolveComponentParentId(component);
+      }
+
+      return this.root.id;
+    };
+
+    const buildNode = (nodeId: string) => {
+      if (built.has(nodeId)) {
+        return;
+      }
+
+      const node = treeNodes.get(nodeId);
+      if (!node) {
+        return;
+      }
+
+      if (visiting.has(nodeId)) {
+        attachToParent(node, this.root);
+        built.add(nodeId);
+        return;
+      }
+
+      visiting.add(nodeId);
+
+      const parentId = resolveParentId(nodeId);
+      const parent = parentId === this.root.id ? this.root : treeNodes.get(parentId);
+
+      if (parent && parent.type !== NODE_TYPE_COMPONENT) {
+        if (parent !== this.root) {
+          buildNode(parent.id);
+        }
+        attachToParent(node, parent);
+      } else {
+        attachToParent(node, this.root);
+      }
+
+      visiting.delete(nodeId);
+      built.add(nodeId);
+    };
+
+    for (const nodeId of treeNodes.keys()) {
+      buildNode(nodeId);
+    }
+
     return this.root;
   }
 
