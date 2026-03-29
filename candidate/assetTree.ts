@@ -197,6 +197,10 @@ export class AssetTree {
       if (parent && parent.type !== NODE_TYPE_COMPONENT) {
         if (parent !== this.root) {
           buildNode(parent.id);
+          if (built.has(nodeId)) {
+            visiting.delete(nodeId);
+            return;
+          }
         }
         attachToParent(node, parent);
       } else {
@@ -245,6 +249,14 @@ export class AssetTree {
   getPath(nodeId: string): TreeNode[] {
     if (!nodeId) {
       return [];
+    }
+
+    if (!this.nodeIndex.has(nodeId) || this.nodeIndex.size === 1 && (
+      this.locations.length > 0 ||
+      this.assets.length > 0 ||
+      this.components.length > 0
+    )) {
+      this.buildTree();
     }
 
     if (!this.nodeIndex.has(nodeId)) {
