@@ -16,6 +16,7 @@ export class AssetTree {
   locations: Location[];
   assets: Asset[];
   components: Component[];
+  nodeIndex: Map<string, TreeNode>;
 
   /**
    * Manages a hierarchical tree of locations, assets, and components.
@@ -37,6 +38,7 @@ export class AssetTree {
     this.locations = locations ?? [];
     this.assets = assets ?? [];
     this.components = components ?? [];
+    this.nodeIndex = new Map([[this.root.id, this.root]]);
   }
 
   // ── Required methods ─────────────────────────────────────────────────
@@ -55,33 +57,40 @@ export class AssetTree {
    * Returns the root node.
    */
   buildTree(): TreeNode {
+    this.root.children = [];
+    this.nodeIndex = new Map([[this.root.id, this.root]]);
+
     const treeNodes = new Map<string, TreeNode>();
     const visiting = new Set<string>();
     const built = new Set<string>();
 
     for (const location of this.locations) {
-      treeNodes.set(location.id, createTreeNode({
+      const node = createTreeNode({
         id: location.id,
         name: location.name,
         type: NODE_TYPE_LOCATION,
         children: [],
         parentId: location.parentId,
-      }));
+      });
+      treeNodes.set(location.id, node);
+      this.nodeIndex.set(location.id, node);
     }
 
     for (const asset of this.assets) {
-      treeNodes.set(asset.id, createTreeNode({
+      const node = createTreeNode({
         id: asset.id,
         name: asset.name,
         type: NODE_TYPE_ASSET,
         children: [],
         locationId: asset.locationId,
         parentId: asset.parentId,
-      }));
+      });
+      treeNodes.set(asset.id, node);
+      this.nodeIndex.set(asset.id, node);
     }
 
     for (const component of this.components) {
-      treeNodes.set(component.id, createTreeNode({
+      const node = createTreeNode({
         id: component.id,
         name: component.name,
         type: NODE_TYPE_COMPONENT,
@@ -89,7 +98,9 @@ export class AssetTree {
         sensorType: component.sensorType,
         status: component.status,
         parentId: component.parentId,
-      }));
+      });
+      treeNodes.set(component.id, node);
+      this.nodeIndex.set(component.id, node);
     }
 
     const attachToParent = (node: TreeNode, parent: TreeNode) => {
@@ -207,8 +218,15 @@ export class AssetTree {
    *   - Should be efficient — avoid O(n) linear scans when possible
    */
   findNodeById(nodeId: string): TreeNode | undefined {
-    // TODO: implement
-    return undefined;
+    if (!nodeId) {
+      return undefined;
+    }
+
+    if (!this.nodeIndex.has(nodeId)) {
+      this.buildTree();
+    }
+
+    return this.nodeIndex.get(nodeId);
   }
 
   /**
