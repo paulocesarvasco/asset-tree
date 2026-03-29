@@ -17,6 +17,7 @@ export class AssetTree {
   assets: Asset[];
   components: Component[];
   nodeIndex: Map<string, TreeNode>;
+  parentIndex: Map<string, string>;
 
   /**
    * Manages a hierarchical tree of locations, assets, and components.
@@ -39,6 +40,7 @@ export class AssetTree {
     this.assets = assets ?? [];
     this.components = components ?? [];
     this.nodeIndex = new Map([[this.root.id, this.root]]);
+    this.parentIndex = new Map([[this.root.id, '']]);
   }
 
   // ── Required methods ─────────────────────────────────────────────────
@@ -59,6 +61,7 @@ export class AssetTree {
   buildTree(): TreeNode {
     this.root.children = [];
     this.nodeIndex = new Map([[this.root.id, this.root]]);
+    this.parentIndex = new Map([[this.root.id, '']]);
 
     const treeNodes = new Map<string, TreeNode>();
     const visiting = new Set<string>();
@@ -106,6 +109,8 @@ export class AssetTree {
     const attachToParent = (node: TreeNode, parent: TreeNode) => {
       if (!parent.children.some(child => child.id === node.id)) {
         parent.children.push(node);
+        node.parentId = parent.id === this.root.id ? '' : parent.id;
+        this.parentIndex.set(node.id, parent.id);
       }
     };
 
@@ -238,8 +243,39 @@ export class AssetTree {
    *   - First element must be root, last element must be the target
    */
   getPath(nodeId: string): TreeNode[] {
-    // TODO: implement
-    return [];
+    if (!nodeId) {
+      return [];
+    }
+
+    if (!this.nodeIndex.has(nodeId)) {
+      return [];
+    }
+
+    const path: TreeNode[] = [];
+    const seen = new Set<string>();
+    let currentId: string | undefined = nodeId;
+
+    while (currentId && !seen.has(currentId)) {
+      const node = this.nodeIndex.get(currentId);
+      if (!node) {
+        return [];
+      }
+
+      path.push(node);
+      seen.add(currentId);
+
+      if (currentId === this.root.id) {
+        break;
+      }
+
+      currentId = this.parentIndex.get(currentId);
+    }
+
+    if (path[path.length - 1]?.id !== this.root.id) {
+      return [];
+    }
+
+    return path.reverse();
   }
 
   // ── Optional methods ─────────────────────────────────────────────────
