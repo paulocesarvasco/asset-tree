@@ -372,7 +372,92 @@ export class AssetTree {
    *   - Return the created TreeNode, or an error if the operation is invalid
    */
   addNode(node: Location | Asset | Component): [TreeNode | undefined, Error | undefined] {
-    throw new Error('Not implemented');
+    if (!this.nodeIndex.has(this.root.id) || this.nodeIndex.size === 1 && (
+      this.locations.length > 0 ||
+      this.assets.length > 0 ||
+      this.components.length > 0
+    )) {
+      this.buildTree();
+    }
+
+    if (!node.id || node.id === this.root.id) {
+      return [undefined, new Error('Node id must be non-empty and cannot be root')];
+    }
+
+    if (this.nodeIndex.has(node.id)) {
+      return [undefined, new Error(`Node with id "${node.id}" already exists`)];
+    }
+
+    const resolveLocationParentId = (parentId: string): string => {
+      if (!parentId) {
+        return '';
+      }
+
+      const parent = this.nodeIndex.get(parentId);
+      return parent?.type === NODE_TYPE_LOCATION ? parent.id : '';
+    };
+
+    const resolveAssetFields = (asset: Asset): Asset => {
+      const assetParent = asset.parentId ? this.nodeIndex.get(asset.parentId) : undefined;
+      if (assetParent?.type === NODE_TYPE_ASSET) {
+        return {
+          ...asset,
+          parentId: assetParent.id,
+          locationId: asset.locationId,
+        };
+      }
+
+      const locationParent = asset.locationId ? this.nodeIndex.get(asset.locationId) : undefined;
+      if (locationParent?.type === NODE_TYPE_LOCATION) {
+        return {
+          ...asset,
+          parentId: '',
+          locationId: locationParent.id,
+        };
+      }
+
+      return {
+        ...asset,
+        parentId: '',
+        locationId: '',
+      };
+    };
+
+    const resolveComponentParentId = (parentId: string): string => {
+      if (!parentId) {
+        return '';
+      }
+
+      const parent = this.nodeIndex.get(parentId);
+      if (parent?.type === NODE_TYPE_LOCATION || parent?.type === NODE_TYPE_ASSET) {
+        return parent.id;
+      }
+
+      return '';
+    };
+
+    const isComponentNode = (candidate: Location | Asset | Component): candidate is Component =>
+      'sensorType' in candidate || 'status' in candidate;
+
+    const isAssetNode = (candidate: Location | Asset | Component): candidate is Asset =>
+      'locationId' in candidate;
+
+    if (isComponentNode(node)) {
+      this.components.push({
+        ...node,
+        parentId: resolveComponentParentId(node.parentId),
+      });
+    } else if (isAssetNode(node)) {
+      this.assets.push(resolveAssetFields(node));
+    } else {
+      this.locations.push({
+        ...node,
+        parentId: resolveLocationParentId(node.parentId),
+      });
+    }
+
+    this.buildTree();
+    return [this.nodeIndex.get(node.id), undefined];
   }
 
   /**
