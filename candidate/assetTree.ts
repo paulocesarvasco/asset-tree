@@ -469,7 +469,44 @@ export class AssetTree {
    *   - Return false if node not found
    */
   removeNode(nodeId: string): boolean {
-    throw new Error('Not implemented');
+    if (!nodeId || nodeId === this.root.id) {
+      return false;
+    }
+
+    if (!this.nodeIndex.has(nodeId) || this.nodeIndex.size === 1 && (
+      this.locations.length > 0 ||
+      this.assets.length > 0 ||
+      this.components.length > 0
+    )) {
+      this.buildTree();
+    }
+
+    const node = this.nodeIndex.get(nodeId);
+    if (!node) {
+      return false;
+    }
+
+    const idsToRemove = new Set<string>();
+    const stack: TreeNode[] = [node];
+
+    while (stack.length > 0) {
+      const current = stack.pop();
+      if (!current || idsToRemove.has(current.id)) {
+        continue;
+      }
+
+      idsToRemove.add(current.id);
+      for (const child of current.children) {
+        stack.push(child);
+      }
+    }
+
+    this.locations = this.locations.filter(location => !idsToRemove.has(location.id));
+    this.assets = this.assets.filter(asset => !idsToRemove.has(asset.id));
+    this.components = this.components.filter(component => !idsToRemove.has(component.id));
+
+    this.buildTree();
+    return true;
   }
 
   /**
