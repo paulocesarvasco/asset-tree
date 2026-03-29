@@ -303,7 +303,63 @@ export class AssetTree {
    *   - SensorTypes and Statuses filter components (AND logic across fields)
    */
   filterTree(criteria: FilterCriteria): TreeNode | undefined {
-    throw new Error('Not implemented');
+    if (!this.nodeIndex.has(this.root.id) || this.nodeIndex.size === 1 && (
+      this.locations.length > 0 ||
+      this.assets.length > 0 ||
+      this.components.length > 0
+    )) {
+      this.buildTree();
+    }
+
+    const normalizedText = criteria.text.trim().toLowerCase();
+    const sensorTypes = new Set(criteria.sensorTypes);
+    const statuses = new Set(criteria.statuses);
+
+    const matchesText = (node: TreeNode): boolean => {
+      if (!normalizedText) {
+        return true;
+      }
+
+      return node.name.toLowerCase().includes(normalizedText);
+    };
+
+    const matchesNode = (node: TreeNode): boolean => {
+      if (!matchesText(node)) {
+        return false;
+      }
+
+      if (node.type !== NODE_TYPE_COMPONENT) {
+        return true;
+      }
+
+      const matchesSensorType = sensorTypes.size === 0 || sensorTypes.has(node.sensorType);
+      const matchesStatus = statuses.size === 0 || statuses.has(node.status);
+
+      return matchesSensorType && matchesStatus;
+    };
+
+    const cloneFilteredNode = (node: TreeNode): TreeNode | undefined => {
+      const filteredChildren = node.children
+        .map(child => cloneFilteredNode(child))
+        .filter((child): child is TreeNode => child !== undefined);
+
+      if (!matchesNode(node) && filteredChildren.length === 0) {
+        return undefined;
+      }
+
+      return createTreeNode({
+        id: node.id,
+        name: node.name,
+        type: node.type,
+        children: filteredChildren,
+        sensorType: node.sensorType,
+        status: node.status,
+        locationId: node.locationId,
+        parentId: node.parentId,
+      });
+    };
+
+    return cloneFilteredNode(this.root);
   }
 
   /**
