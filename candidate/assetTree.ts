@@ -64,10 +64,14 @@ export class AssetTree {
     this.parentIndex = new Map([[this.root.id, '']]);
 
     const treeNodes = new Map<string, TreeNode>();
+    const locationSources = new Map<string, Location>();
+    const assetSources = new Map<string, Asset>();
+    const componentSources = new Map<string, Component>();
     const visiting = new Set<string>();
     const built = new Set<string>();
 
     for (const location of this.locations) {
+      locationSources.set(location.id, location);
       const node = createTreeNode({
         id: location.id,
         name: location.name,
@@ -80,6 +84,7 @@ export class AssetTree {
     }
 
     for (const asset of this.assets) {
+      assetSources.set(asset.id, asset);
       const node = createTreeNode({
         id: asset.id,
         name: asset.name,
@@ -93,6 +98,7 @@ export class AssetTree {
     }
 
     for (const component of this.components) {
+      componentSources.set(component.id, component);
       const node = createTreeNode({
         id: component.id,
         name: component.name,
@@ -107,11 +113,9 @@ export class AssetTree {
     }
 
     const attachToParent = (node: TreeNode, parent: TreeNode) => {
-      if (!parent.children.some(child => child.id === node.id)) {
-        parent.children.push(node);
-        node.parentId = parent.id === this.root.id ? '' : parent.id;
-        this.parentIndex.set(node.id, parent.id);
-      }
+      parent.children.push(node);
+      node.parentId = parent.id === this.root.id ? '' : parent.id;
+      this.parentIndex.set(node.id, parent.id);
     };
 
     const resolveLocationParentId = (location: Location): string => {
@@ -155,17 +159,17 @@ export class AssetTree {
     };
 
     const resolveParentId = (nodeId: string): string => {
-      const location = this.locations.find(item => item.id === nodeId);
+      const location = locationSources.get(nodeId);
       if (location) {
         return resolveLocationParentId(location);
       }
 
-      const asset = this.assets.find(item => item.id === nodeId);
+      const asset = assetSources.get(nodeId);
       if (asset) {
         return resolveAssetParentId(asset);
       }
 
-      const component = this.components.find(item => item.id === nodeId);
+      const component = componentSources.get(nodeId);
       if (component) {
         return resolveComponentParentId(component);
       }
