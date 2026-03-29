@@ -242,13 +242,83 @@ Consider:
 - Observability: logging, metrics, alerting
 - How the system scales if the tree grows to hundreds of thousands of nodes
 
+#### Split Deployment and Delivery Flow
 ```mermaid
-%% Replace this block with your infrastructure architecture diagram
+flowchart TD
+    A[User Browser] --> B[CDN / Static Hosting]
+    B --> C[Frontend Static App]
+
+    C --> D[Reverse Proxy / Load Balancer]
+
+    D --> E1[Backend REST API - Replica 1]
+    D --> E2[Backend REST API - Replica 2]
+
+    E1 --> F[(Primary Relational Database)]
+    E2 --> F
+
+    F --> G[Scheduled Backups]
+
+    F -. optional large-read scaling .-> H[(Read Replica)]
+    E1 -. optional cached hierarchy reads .-> I[Cache]
+    E2 -. optional cached hierarchy reads .-> I
+
+    subgraph Delivery
+        J[Source Control] --> K[CI/CD Pipeline]
+        K --> L[Build and Test]
+        L --> M[Deploy to Staging]
+        M --> N[Smoke Tests]
+        N --> O[Promote to Production]
+    end
+
+    O --> B
+    O --> D
+
+    subgraph Observability
+        P[Structured Logs]
+        Q[Metrics and Health Checks]
+        R[Alerts]
+    end
+
+    E1 --> P
+    E2 --> P
+    E1 --> Q
+    E2 --> Q
+    F --> Q
+    Q --> R
 ```
 
 **Your explanation:**
 
-<!-- Write your reasoning here -->
+1. Decision drivers
+
+The infrastructure architecture is driven by the need to run the frontend and backend reliably while preserving the backend’s consistency guarantees for hierarchy mutations and keeping the system operationally simple for a small team. The most important concerns are stable deployment of stateless application services, durable and isolated operation of the relational database, safe separation between development, staging, and production environments, and sufficient observability through logging, metrics, and alerting to diagnose production failures and structural mutation issues. The design must also support an automated CI/CD path with repeatable builds, controlled promotion across environments, and rollback readiness. Although the system does not require a highly distributed platform initially, the infrastructure should still support horizontal scaling of stateless services and database-focused optimization if the hierarchy grows to hundreds of thousands of nodes or request volume increases significantly. Overall, the key drivers are operational simplicity, data durability, safe delivery, observability, resilience, and a clear path to scale.
+
+2. Options considered
+
+Several infrastructure options were considered for deploying and operating the frontend, backend, and relational database. A single-server containerized deployment provides the simplest production baseline and is attractive for a small team, but it creates a single point of failure, limits workload isolation, and becomes restrictive as traffic or hierarchy size grows. A split deployment, where application services run separately from the database, offers a stronger balance between simplicity and production robustness by isolating the most critical stateful component while keeping the platform relatively easy to operate. A full container orchestration platform provides the most flexibility for scaling, rollout management, and service resilience, but introduces more operational complexity than is justified for the current system size. A managed-services model is also a strong option because it reduces infrastructure maintenance, though it provides less runtime control and can increase vendor dependency. A serverless approach was considered less suitable for the backend because transactional hierarchy operations, predictable database connectivity, and sustained API behavior are better served by containerized application services.
+
+For operations, minimal logging and manual deployments were considered insufficient because they make production debugging and release safety too fragile. A lightweight observability stack with centralized logs, metrics, health checks, and alerting provides a better baseline, and CI/CD-driven deployment is preferable to manual release procedures because it improves consistency, traceability, and rollback readiness. From a scalability perspective, single-host deployment becomes limiting more quickly as the tree grows, while split deployment and managed services provide a better path to independent database scaling, horizontal application scaling, and later introduction of caching or read replicas if hierarchy reads become dominant.
+
+3. Recommended approach
+
+The recommended infrastructure architecture uses a split deployment model in which the frontend and backend are deployed as containerized stateless services, while the relational database is deployed separately as the primary stateful component. This approach provides the best balance between production readiness, operational simplicity, and controlled scalability. The frontend can be hosted as a static application behind a web server or CDN, while the backend runs as a containerized REST API behind a reverse proxy or load balancer. The database should be isolated on a separate host or, preferably, provided through a managed relational database service so that transactional hierarchy operations, including safe node relocation, are not exposed to unnecessary resource contention or shared failure boundaries.
+
+The platform should support separate development, staging, and production environments, with automated CI/CD pipelines used to build, test, publish, and deploy frontend and backend artifacts. A release should pass through staging before promotion to production, and deployments should include smoke tests covering critical flows such as tree loading, CRUD operations, and node relocation. Configuration should be externalized by environment, and secrets should be managed outside the codebase through a secure secret-management mechanism. The infrastructure should also include a lightweight observability baseline with structured logs, service and host metrics, health checks, and basic alerting so that production issues can be diagnosed quickly and deployment regressions can be detected early.
+
+The architecture also supports growth to very large hierarchies. If the tree expands to hundreds of thousands of nodes, the stateless frontend and backend services can be scaled horizontally behind the existing reverse proxy or load balancer, while the database can be scaled independently through resource tuning, indexing, and query optimization. The frontend can continue to scale efficiently through static hosting and CDN delivery, while the backend can add replicas as concurrency and API load increase. If hierarchy reads become significantly heavier than writes, read replicas and selective caching can be introduced for subtree and ancestor retrieval endpoints, while transactional writes continue to use the primary database. This allows the system to scale incrementally without requiring an immediate move to a full orchestration platform.
+
+This design is recommended because it protects the most critical stateful component, keeps stateless application services easy to deploy and evolve, supports safe automated delivery, and provides a practical path for growth without introducing the operational overhead of a more complex platform too early. It also establishes the minimum operational controls needed for a system that manages persistent hierarchical business data.
+
+
+4. Tradeoffs
+
+The recommended infrastructure architecture prioritizes reliability, data protection, and maintainability, but it does so by accepting some limits in platform sophistication and elasticity. A split deployment with containerized stateless services and a separately hosted relational database provides a strong production baseline because it isolates the critical stateful component, supports safer deployment practices, and remains relatively easy for a small team to understand and operate. It also aligns well with the application’s need for transactional consistency during hierarchy mutations while keeping frontend and backend services straightforward to package, redeploy, and scale incrementally.
+
+The main tradeoff is that this design is less flexible than a full orchestration platform for automatic scaling, self-healing, and advanced rollout control. It also assumes some ongoing infrastructure ownership, including CI/CD maintenance, environment management, secrets handling, and observability setup. In addition, the observability baseline is intentionally lightweight rather than highly sophisticated, which keeps the platform simpler but provides less diagnostic depth than a larger-scale system might require.
+
+Another important tradeoff is that scaling to very large hierarchies depends primarily on database optimization, read distribution, and selective caching rather than on the application tier alone. The stateless frontend and backend can scale horizontally, but performance at larger tree sizes will be driven more by database behavior, query efficiency, indexing strategy, and read-heavy access patterns. This keeps the initial infrastructure simpler and avoids premature platform complexity, but it also means that future growth may require targeted evolution of the data and runtime layers rather than relying only on generic horizontal scaling.
+
+These tradeoffs are acceptable because the goal is to establish a safe, practical, and evolvable production architecture without introducing unnecessary operational complexity too early.
 
 ---
 
