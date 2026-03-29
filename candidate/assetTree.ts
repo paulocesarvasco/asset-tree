@@ -520,6 +520,114 @@ export class AssetTree {
    *   - Return false if the operation is invalid (cycle, not found, etc.)
    */
   moveNode(nodeId: string, newParentId: string): boolean {
-    throw new Error('Not implemented');
+    if (!nodeId || nodeId === this.root.id) {
+      return false;
+    }
+
+    if (!this.nodeIndex.has(nodeId) || this.nodeIndex.size === 1 && (
+      this.locations.length > 0 ||
+      this.assets.length > 0 ||
+      this.components.length > 0
+    )) {
+      this.buildTree();
+    }
+
+    const node = this.nodeIndex.get(nodeId);
+    if (!node) {
+      return false;
+    }
+
+    const targetParentId = !newParentId || newParentId === this.root.id ? this.root.id : newParentId;
+    const parent = this.nodeIndex.get(targetParentId);
+    if (!parent) {
+      return false;
+    }
+
+    if (targetParentId !== this.root.id) {
+      const subtreeIds = new Set<string>();
+      const stack: TreeNode[] = [node];
+
+      while (stack.length > 0) {
+        const current = stack.pop();
+        if (!current || subtreeIds.has(current.id)) {
+          continue;
+        }
+
+        subtreeIds.add(current.id);
+        for (const child of current.children) {
+          stack.push(child);
+        }
+      }
+
+      if (subtreeIds.has(targetParentId)) {
+        return false;
+      }
+    }
+
+    const getNearestLocationId = (startId: string): string => {
+      let currentId: string | undefined = startId;
+      const seen = new Set<string>();
+
+      while (currentId && currentId !== this.root.id && !seen.has(currentId)) {
+        seen.add(currentId);
+
+        const currentNode = this.nodeIndex.get(currentId);
+        if (!currentNode) {
+          return '';
+        }
+
+        if (currentNode.type === NODE_TYPE_LOCATION) {
+          return currentNode.id;
+        }
+
+        currentId = this.parentIndex.get(currentId);
+      }
+
+      return '';
+    };
+
+    if (node.type === NODE_TYPE_LOCATION) {
+      if (targetParentId === this.root.id) {
+        this.locations = this.locations.map(location =>
+          location.id === nodeId ? { ...location, parentId: '' } : location);
+      } else if (parent.type === NODE_TYPE_LOCATION) {
+        this.locations = this.locations.map(location =>
+          location.id === nodeId ? { ...location, parentId: parent.id } : location);
+      } else {
+        return false;
+      }
+    } else if (node.type === NODE_TYPE_ASSET) {
+      if (targetParentId === this.root.id) {
+        this.assets = this.assets.map(asset =>
+          asset.id === nodeId ? { ...asset, parentId: '', locationId: '' } : asset);
+      } else if (parent.type === NODE_TYPE_LOCATION) {
+        this.assets = this.assets.map(asset =>
+          asset.id === nodeId ? { ...asset, parentId: '', locationId: parent.id } : asset);
+      } else if (parent.type === NODE_TYPE_ASSET) {
+        this.assets = this.assets.map(asset =>
+          asset.id === nodeId ? {
+            ...asset,
+            parentId: parent.id,
+            locationId: getNearestLocationId(parent.id),
+          } : asset);
+      } else {
+        return false;
+      }
+    } else if (node.type === NODE_TYPE_COMPONENT) {
+      if (targetParentId === this.root.id) {
+        this.components = this.components.map(component =>
+          component.id === nodeId ? { ...component, parentId: '' } : component);
+      } else if (parent.type === NODE_TYPE_LOCATION || parent.type === NODE_TYPE_ASSET) {
+        this.components = this.components.map(component =>
+          component.id === nodeId ? { ...component, parentId: parent.id } : component);
+      } else {
+        return false;
+      }
+    } else {
+      return false;
+    }
+
+    this.buildTree();
+    return true;
   }
 }
