@@ -31,13 +31,110 @@ Consider:
 - How drag-and-drop relocation works
 - Optimistic updates vs. waiting for server confirmation
 
+#### Hierarchy State and Node Relocation Flow
+
 ```mermaid
-%% Replace this block with your frontend architecture diagram
+flowchart TD
+    A[User] --> B[Hierarchy Page]
+
+    subgraph UI
+        B --> C[Tree Panel]
+        B --> D[Node Details Panel]
+        B --> E[Create Node Modal]
+        B --> F[Move Node Modal]
+        B --> G[Delete Confirmation Modal]
+        B --> H[Notification Area]
+
+        C --> I[Tree View]
+        I --> J[Tree Node]
+    end
+
+    subgraph Client_State
+        K[Centralized Hierarchy State]
+        L[Normalized Nodes]
+        M[Expanded Node IDs]
+        N[Selected Node ID]
+        O[Mutation Status]
+    end
+
+    subgraph Interaction_Flow
+        P[Drag Handle]
+        Q[Valid Drop Target Highlight]
+        R[Pending Move State]
+    end
+
+    subgraph Backend
+        S[REST API]
+    end
+
+    J --> K
+    D --> K
+    E --> K
+    F --> K
+    G --> K
+
+    K --> L
+    K --> M
+    K --> N
+    K --> O
+
+    J --> P
+    P --> Q
+    Q --> R
+    R --> S
+    S --> K
+
+    O --> H
 ```
 
 **Your explanation:**
 
-<!-- Write your reasoning here -->
+1. Decision drivers
+
+The frontend architecture is driven by the need to render and manipulate hierarchical data in a way that is clear, responsive, and consistent with backend-enforced rules. The most important UI operation is node relocation, since moving a node changes the structure itself and requires the frontend to communicate intent, prevent obvious invalid actions, and handle backend validation failures gracefully. The design must also support common hierarchy interactions such as expansion and collapse, node selection, subtree inspection, and CRUD actions without losing user context. Because structural mutations can affect multiple visible branches, the frontend needs a state model that can update the hierarchy predictably after create, delete, and move operations while preserving expansion and selection state. Additional drivers include rendering efficiency for larger trees, synchronization with backend validation rules such as allowed parent-child relationships, and overall maintainability for a small team.
+
+2. Options considered
+
+Several frontend approaches were considered across rendering, state management, and relocation interaction. A server-driven or page-oriented frontend would reduce client complexity, but it is poorly suited for a hierarchy editor because structural changes require preserving context, expansion state, and partial refresh of the tree. A client-side application with a structured component hierarchy is a better fit because it supports interactive browsing, focused node editing, and responsive updates after mutations. For state management, relying only on local component state is simple initially, but becomes fragile when move operations affect multiple branches and shared UI concerns such as selection, expansion, and mutation status. A centralized client-side state model with normalized node data offers better coordination and clearer mutation handling. For relocation, drag-and-drop provides the most natural interaction for manipulating a tree, but it should be paired with a form-based or action-based move flow so that the interface remains accessible and can support explicit validation when needed. Overall, the strongest candidate is a client-side tree editor with centralized hierarchy state and a relocation model that supports both drag-and-drop and explicit move actions.
+
+3. Recommended approach
+
+The frontend should be implemented as a React and TypeScript client application with a component structure centered on a tree view, node detail forms, and dedicated modal flows for structural actions. React is a strong fit because the interface naturally decomposes into reusable components such as tree nodes, action menus, forms, and relocation dialogs, while TypeScript improves safety for node types, mutation payloads, and validation states. The hierarchy should be managed through a centralized client-side state model using normalized node data, with global ownership of the tree structure, selected node, expanded nodes, and mutation status, while purely local concerns such as modal visibility and temporary form values remain inside components.
+
+The recommended component structure includes a hierarchy page, a tree panel, a tree view with reusable tree node components, a node details panel for editing, and separate modal components for create, move, and delete actions. This keeps browsing, editing, and structural mutations clearly separated. Drag-and-drop should be implemented as a guided relocation flow with explicit drag handles, visual highlighting of valid targets, and prevention of obviously invalid local moves such as dropping onto the same node or one of its descendants. However, the backend remains authoritative, so the frontend must still handle rejected relocation requests gracefully.
+
+For synchronization, the tree should be stored in normalized form rather than as a single nested object, allowing source and target branches to be updated predictably after mutations. The recommended strategy is to use limited optimistic behavior: non-structural edits may update immediately, but structural mutations such as node relocation should wait for server confirmation before committing the visible tree change. During that time, the UI should show pending feedback on the affected node or branch. This approach provides the best balance between responsiveness, correctness, and maintainability for a hierarchy editor.
+
+#### Frontend Flow for Server-Confirmed Node Move
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant TV as Tree View
+    participant S as Client State
+    participant API as REST API
+    participant UI as Notification Area
+
+    U->>TV: Drag node to new parent
+    TV->>S: Mark pending move
+    TV->>TV: Highlight valid target
+    TV->>API: POST /nodes/:id/move
+    API-->>S: Move confirmed
+    S-->>TV: Update normalized tree state
+    S-->>UI: Show success feedback
+
+    alt Move rejected
+        API-->>S: Validation error
+        S-->>TV: Keep previous structure
+        S-->>UI: Show error feedback
+    end
+```
+
+4. Tradeoffs
+
+The recommended frontend architecture prioritizes predictable handling of hierarchy mutations, clear interaction boundaries, and maintainable state management, but it does so at the cost of higher client-side complexity. A React and TypeScript application with centralized normalized tree state provides a strong foundation for coordinating create, update, delete, and move operations, especially when a structural change affects multiple visible branches. It also allows the interface to separate navigation, node editing, and relocation into explicit components and flows, which improves clarity and testability. Drag-and-drop further improves usability by making structural changes direct and visible, while an explicit move dialog provides a safer and more accessible fallback.
+
+The main tradeoff is that this design is more complex than a simpler page-oriented or fully local-state implementation. It requires careful state boundaries, mutation lifecycle handling, and controlled synchronization with backend responses. In addition, the recommendation to wait for server confirmation before committing structural moves favors correctness and simpler error handling over maximum immediacy in the interface. Drag-and-drop also adds implementation and accessibility complexity, which is why it should not be the only relocation mechanism. These tradeoffs are acceptable because the interface must support a mutable hierarchy reliably, and the chosen architecture provides a better long-term balance of usability, correctness, and maintainability than a simpler but less controlled frontend design.
 
 ---
 
